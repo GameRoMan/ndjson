@@ -1,9 +1,19 @@
 import { EOL } from "node:os";
-import type Stream from "node:stream";
+import Stream from "node:stream";
 
-import { throughObj } from "~/lib/through2";
 import SplitStream from "~/lib/split-stream";
 import jsonstringify from "~/lib/json-stringify-safe";
+
+const throughObj = (
+  options?: Stream.TransformOptions,
+  transform?: Stream.TransformOptions["transform"]
+): Stream.Transform =>
+  new Stream.Transform({
+    objectMode: true,
+    highWaterMark: 16,
+    ...options,
+    transform,
+  });
 
 export const stringify = (opts?: Stream.TransformOptions): Stream.Transform => {
   return throughObj(opts, (obj, _, callback) => {
@@ -12,17 +22,17 @@ export const stringify = (opts?: Stream.TransformOptions): Stream.Transform => {
 };
 
 export const parse = (
-  opts?: { strict?: boolean } & Stream.TransformOptions
+  options?: { strict?: boolean } & Stream.TransformOptions
 ): Stream.Transform => {
   function parseRow(row: string): unknown {
     try {
       if (row) return JSON.parse(row);
     } catch {
-      if (opts?.strict) {
+      if (options?.strict) {
         throw new Error("Could not parse row " + row.slice(0, 50) + "...");
       }
     }
   }
 
-  return new SplitStream(parseRow, opts);
+  return new SplitStream(parseRow, options);
 };

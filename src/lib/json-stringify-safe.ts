@@ -12,7 +12,9 @@ function serializer() {
       const thisPos = stack.indexOf(this);
       if (~thisPos) {
         stack.splice(thisPos + 1);
-      } else stack.push(this);
+      } else {
+        stack.push(this);
+      }
       if (~thisPos) {
         keys.splice(thisPos, Infinity, key);
       } else {
@@ -34,4 +36,3 @@ function stringify(obj: unknown): string {
 }
 
 export default stringify;
-export { serializer as getSerialize };

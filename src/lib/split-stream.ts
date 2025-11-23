@@ -5,68 +5,6 @@ import { StringDecoder } from "node:string_decoder";
 const kLast = Symbol("last");
 const kDecoder = Symbol("decoder");
 
-function push(self: SplitStream, val: unknown): void {
-  if (val !== undefined) {
-    self.push(val);
-  }
-}
-
-function transform(
-  this: SplitStream,
-  chunk: unknown,
-  _encoding: BufferEncoding,
-  callback: Stream.TransformCallback
-): void {
-  let list;
-  if (this.overflow) {
-    // Line buffer is full. Skip to start of next line.
-    const buf = this[kDecoder].write(chunk);
-    list = buf.split(this.matcher);
-
-    if (list.length === 1) return callback(); // Line ending not found. Discard entire chunk.
-
-    // Line ending found. Discard trailing fragment of previous line and reset overflow state.
-    list.shift();
-    this.overflow = false;
-  } else {
-    this[kLast] += this[kDecoder].write(chunk);
-    list = this[kLast].split(this.matcher);
-  }
-
-  this[kLast] = list.pop();
-
-  for (let i = 0; i < list.length; i++) {
-    try {
-      push(this, this.mapper(list[i]));
-    } catch (error) {
-      return callback(error);
-    }
-  }
-
-  this.overflow = this[kLast].length > this.maxLength;
-  if (this.overflow && !this.skipOverflow) {
-    callback(new Error("maximum buffer reached"));
-    return;
-  }
-
-  callback();
-}
-
-function flush(this: SplitStream, callback: Stream.TransformCallback) {
-  // forward any gibberish left in there
-  this[kLast] += this[kDecoder].end();
-
-  if (this[kLast]) {
-    try {
-      push(this, this.mapper(this[kLast]));
-    } catch (error) {
-      return callback(error);
-    }
-  }
-
-  callback();
-}
-
 interface SplitStreamOptions extends Stream.TransformOptions {
   maxLength?: number;
   skipOverflow?: boolean;
@@ -85,11 +23,11 @@ class SplitStream extends Transform {
     super();
     options = Object.assign({}, options);
     options.autoDestroy = true;
-    options.transform = transform;
-    options.flush = flush;
+    options.transform = this.transform;
+    options.flush = this.flush;
     options.readableObjectMode = true;
 
-    const stream: this = new Transform(options);
+    const stream: SplitStream = new Transform(options);
 
     stream[kLast] = "";
     stream[kDecoder] = new StringDecoder("utf8");
@@ -103,6 +41,67 @@ class SplitStream extends Transform {
     };
 
     return stream;
+  }
+
+  flush(callback: Stream.TransformCallback): void {
+    // Forward any gibberish left in there
+    this[kLast] += this[kDecoder].end();
+
+    if (this[kLast]) {
+      try {
+        const val = this.mapper(this[kLast]);
+        if (val !== undefined) {
+          this.push(val);
+        }
+      } catch (error) {
+        return callback(error);
+      }
+    }
+
+    callback();
+  }
+
+  transform(
+    chunk: string,
+    _encoding: BufferEncoding,
+    callback: Stream.TransformCallback
+  ): void {
+    let list;
+    if (this.overflow) {
+      // Line buffer is full. Skip to start of next line.
+      const buf = this[kDecoder].write(chunk);
+      list = buf.split(this.matcher);
+
+      if (list.length === 1) return callback(); // Line ending not found. Discard entire chunk.
+
+      // Line ending found. Discard trailing fragment of previous line and reset overflow state.
+      list.shift();
+      this.overflow = false;
+    } else {
+      this[kLast] += this[kDecoder].write(chunk);
+      list = this[kLast].split(this.matcher);
+    }
+
+    this[kLast] = list.pop()!;
+
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const val = this.mapper(list[i]!);
+        if (val !== undefined) {
+          this.push(val);
+        }
+      } catch (error) {
+        return callback(error);
+      }
+    }
+
+    this.overflow = this[kLast].length > this.maxLength;
+    if (this.overflow && !this.skipOverflow) {
+      callback(new Error("maximum buffer reached"));
+      return;
+    }
+
+    callback();
   }
 }
 

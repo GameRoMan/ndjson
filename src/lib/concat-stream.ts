@@ -1,16 +1,5 @@
 import { Writable } from "node:stream";
 
-function stringConcat(parts: string[]): string {
-  let strings: string[] = [];
-
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i]!;
-    strings.push(p);
-  }
-
-  return strings.join("");
-}
-
 class ConcatStream extends Writable {
   private body: string[];
 
@@ -31,7 +20,7 @@ class ConcatStream extends Writable {
   }
 
   getBody(): string {
-    return stringConcat(this.body);
+    return this.body.join("");
   }
 }
 
